@@ -95,9 +95,10 @@ jobs:
           sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' \
             "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
           {
-            echo 'org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8 -XX:MaxMetaspaceSize=768m'
-            echo 'kotlin.daemon.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m'
-            echo 'org.gradle.workers.max=2'
+            echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:MaxMetaspaceSize=768m'
+            echo 'kotlin.daemon.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m'
+            echo 'org.gradle.workers.max=1'
+            echo 'org.gradle.parallel=false'
           } >> gradle.properties
 
       - name: Test and build personal APK
@@ -106,7 +107,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon testVersionDevDebugUnitTest assembleVersionDevDebug assembleVersionDevRelease \
+          tasks=(testVersionDevDebugUnitTest assembleVersionDevRelease)
+          if [[ "$RELEASE_TAG" == ci ]]; then
+            tasks+=(assembleVersionDevDebug)
+          fi
+          ./gradlew --no-daemon "${tasks[@]}" \
             "-PpersonalVersionName=${RELEASE_TAG#personal-}" \
             "-PpersonalVersionCode=$((1000000000 + GITHUB_RUN_NUMBER))"
 
