@@ -418,11 +418,6 @@ class PassCodeActivity :
         }
     }
 
-    override fun onDestroy() {
-        PassCodeManager.setSecureFlag(this, false)
-        super.onDestroy()
-    }
-
     private inner class PassCodeDigitTextWatcher(index: Int, lastOne: Boolean) : TextWatcher {
         private var mIndex = -1
         private val mLastOne: Boolean

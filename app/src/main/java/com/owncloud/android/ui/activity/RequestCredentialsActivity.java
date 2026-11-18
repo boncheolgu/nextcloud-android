@@ -91,9 +91,4 @@ public class RequestCredentialsActivity extends Activity {
         finish();
     }
 
-    @Override
-    protected void onDestroy() {
-        PassCodeManager.Companion.setSecureFlag(this,false);
-        super.onDestroy();
-    }
 }

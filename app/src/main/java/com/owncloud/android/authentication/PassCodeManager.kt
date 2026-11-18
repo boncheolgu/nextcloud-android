@@ -10,6 +10,7 @@ package com.owncloud.android.authentication
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.PowerManager
 import android.view.View
 import android.view.WindowManager
@@ -34,10 +35,8 @@ class PassCodeManager(private val preferences: AppPreferences, private val clock
         fun setSecureFlag(activity: Activity, isSet: Boolean) {
             activity.window?.let { window ->
                 if (isSet) {
-                    println("flag added")
                     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 } else {
-                    println("flag cleared")
                     window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 }
             }
@@ -51,7 +50,15 @@ class PassCodeManager(private val preferences: AppPreferences, private val clock
 
     private fun isExemptActivity(activity: Activity): Boolean = exemptOfPasscodeActivities.contains(activity.javaClass)
 
+    fun onActivityCreated(activity: Activity) {
+        protectWindow(activity)
+        if (isLocked(activity)) {
+            getActivityRootView(activity)?.visibility = View.INVISIBLE
+        }
+    }
+
     fun onActivityResumed(activity: Activity): Boolean {
+        protectWindow(activity)
         val returningToPausedActivity = pausedActivity?.get() === activity
         pausedActivity = null
         if (isExemptActivity(activity)) {
@@ -64,7 +71,7 @@ class PassCodeManager(private val preferences: AppPreferences, private val clock
         val passcodeRequested = passCodeShouldBeRequested()
         val credentialsRequested = deviceCredentialsShouldBeRequested(activity)
         val askedForPin = passcodeRequested || credentialsRequested
-        getActivityRootView(activity)?.visibility = if (askedForPin) View.GONE else View.VISIBLE
+        getActivityRootView(activity)?.visibility = if (askedForPin) View.INVISIBLE else View.VISIBLE
 
         if (passcodeRequested) {
             requestPasscode(activity)
@@ -107,9 +114,21 @@ class PassCodeManager(private val preferences: AppPreferences, private val clock
 
     fun onActivityStarted(activity: Activity) {
         startedActivities.add(activity)
+        protectWindow(activity)
+        if (isLocked(activity)) {
+            getActivityRootView(activity)?.visibility = View.INVISIBLE
+        }
+    }
+
+    fun concealActivity(activity: Activity) {
+        protectWindow(activity)
+        if (isProtectionEnabled() && !isExemptActivity(activity)) {
+            getActivityRootView(activity)?.visibility = View.INVISIBLE
+        }
     }
 
     fun onActivityPaused(activity: Activity) {
+        concealActivity(activity)
         pausedActivity = WeakReference(activity)
     }
 
@@ -130,6 +149,18 @@ class PassCodeManager(private val preferences: AppPreferences, private val clock
         canAskPin = false
         askPinWhenDeviceLocked = false
         pausedActivity = null
+    }
+
+    private fun isProtectionEnabled(): Boolean =
+        preferences.lockPreference == SettingsActivity.LOCK_PASSCODE ||
+            preferences.lockPreference == SettingsActivity.LOCK_DEVICE_CREDENTIALS
+
+    private fun protectWindow(activity: Activity) {
+        val secure = isProtectionEnabled() || isExemptActivity(activity)
+        setSecureFlag(activity, secure)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            activity.setRecentsScreenshotEnabled(!secure)
+        }
     }
 
     private fun shouldBeLocked(): Boolean = canAskPin || askPinWhenDeviceLocked
