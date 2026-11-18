@@ -15,10 +15,9 @@ import android.app.KeyguardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.SystemClock;
 
-import com.nextcloud.client.preferences.AppPreferencesImpl;
 import com.nextcloud.utils.SnackbarUtil;
+import com.owncloud.android.MainApp;
 import com.owncloud.android.R;
 import com.owncloud.android.authentication.PassCodeManager;
 import com.owncloud.android.lib.common.utils.Log_OC;
@@ -49,7 +48,7 @@ public class RequestCredentialsActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_CODE_CONFIRM_DEVICE_CREDENTIALS) {
             if (resultCode == Activity.RESULT_OK) {
-                AppPreferencesImpl.fromContext(this).setLockTimestamp(SystemClock.elapsedRealtime());
+                ((MainApp) getApplication()).getPassCodeManager().updateLockTimestamp();
                 finishWithResult(KEY_CHECK_RESULT_TRUE);
             } else if (resultCode == Activity.RESULT_CANCELED) {
                 finishWithResult(KEY_CHECK_RESULT_CANCEL);

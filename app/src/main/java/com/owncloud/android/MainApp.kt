@@ -260,7 +260,6 @@ open class MainApp :
     }
 
     private fun onAppBackground() {
-        passCodeManager.canAskPin = true
         Log_OC.d(TAG, "APP IN BACKGROUND")
     }
 

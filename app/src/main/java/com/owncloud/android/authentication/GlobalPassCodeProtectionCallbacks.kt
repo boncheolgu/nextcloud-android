@@ -25,6 +25,7 @@ class GlobalPassCodeProtectionCallbacks(
 
     override fun onActivityStarted(activity: Activity) {
         activity.logLifecycle("onStart() starting")
+        passCodeManager.onActivityStarted(activity)
     }
 
     override fun onActivityResumed(activity: Activity) {
@@ -40,9 +41,7 @@ class GlobalPassCodeProtectionCallbacks(
 
     override fun onActivityStopped(activity: Activity) {
         activity.logLifecycle("onStop() ending")
-        if (activity !is LauncherActivity) {
-            passCodeManager.onActivityStopped(activity)
-        }
+        passCodeManager.onActivityStopped(activity)
     }
 
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {

@@ -1,0 +1,181 @@
+# SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: Personal APK release
+
+on:
+  push:
+    branches: [master]
+    tags: ['personal-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example personal-v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository_owner == 'boncheolgu'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate version and signing configuration
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          PUBLISH: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/personal-v') }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$PUBLISH" != true ]]; then
+            echo 'tag=ci' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [[ "$RELEASE_TAG" =~ ^personal-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo 'Use a tag such as personal-v0.1.0.' >&2
+            exit 1
+          }
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            [[ -n "${!name}" ]] || {
+              echo "Missing signing configuration: $name" >&2
+              exit 1
+            }
+          done
+          if git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null; then
+            [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" == "$GITHUB_SHA" ]] || {
+              echo 'The release tag points to another commit.' >&2
+              exit 1
+            }
+          fi
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+
+      - name: Install Android build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ndk.env
+          sdkmanager 'platforms;android-37' 'build-tools;36.0.0' \
+            "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
+          {
+            echo 'org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8 -XX:MaxMetaspaceSize=768m'
+            echo 'kotlin.daemon.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m'
+            echo 'org.gradle.workers.max=2'
+          } >> gradle.properties
+
+      - name: Test and build personal APK
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testVersionDevDebugUnitTest assembleVersionDevDebug assembleVersionDevRelease \
+            "-PpersonalVersionName=${RELEASE_TAG#personal-}" \
+            "-PpersonalVersionCode=$((1000000000 + GITHUB_RUN_NUMBER))"
+
+      - name: Sign and verify APK
+        if: steps.version.outputs.tag != 'ci'
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          keystore="$RUNNER_TEMP/personal-release.jks"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          mapfile -t apks < <(find app/build/outputs/apk/versionDev/release -name '*.apk')
+          [[ "${#apks[@]}" -eq 1 ]] || {
+            echo 'Expected exactly one APK.' >&2
+            exit 1
+          }
+          mkdir -p dist
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          apk="dist/Nextcloud-Personal-$RELEASE_TAG.apk"
+          "$tools/zipalign" -f -p 4 "${apks[0]}" "$RUNNER_TEMP/aligned.apk"
+          "$tools/apksigner" sign --ks "$keystore" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD \
+            --out "$apk" "$RUNNER_TEMP/aligned.apk"
+          "$tools/apksigner" verify --verbose --print-certs "$apk"
+          (cd dist && sha256sum ./*.apk > SHA256SUMS)
+
+      - name: Upload signed APK
+        if: steps.version.outputs.tag != 'ci'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: personal-release
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload test APK
+        if: steps.version.outputs.tag == 'ci'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: personal-test-apk
+          path: app/build/outputs/apk/versionDev/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    if: needs.build.outputs.tag != 'ci'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: gh run download "$RUN_ID" --name personal-release --dir dist
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" \
+              --title "Nextcloud Personal $RELEASE_TAG" --generate-notes --prerelease
+          fi
+          gh release upload "$RELEASE_TAG" dist/* --clobber

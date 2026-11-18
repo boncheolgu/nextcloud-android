@@ -167,10 +167,10 @@ android {
             }
 
             register("versionDev") {
-                applicationId = "com.nextcloud.android.beta"
+                applicationId = "com.boncheolgu.nextcloud"
                 dimension = "default"
-                versionCode = 20220322
-                versionName = "20220322"
+                versionCode = providers.gradleProperty("personalVersionCode").orNull?.toInt() ?: 1
+                versionName = providers.gradleProperty("personalVersionName").orNull ?: "0.1.0-personal"
                 optimization {
                     enable = enableR8
                 }
