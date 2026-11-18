@@ -66,6 +66,37 @@ class ScreenPrivacyProtectionTest {
     }
 
     @Test
+    fun creationDoesNotHideTheFrameworkContainerBeforeAppCompatWrapsIt() {
+        val frameworkContainer = mockk<View>(relaxed = true)
+        every { window.findViewById<View>(android.R.id.content) } returns frameworkContainer
+        val coldManager = PassCodeManager(preferences, mockk(relaxed = true))
+        val coldCallbacks = GlobalPassCodeProtectionCallbacks(mockk(relaxed = true), coldManager)
+        coldCallbacks.onActivityCreated(content, null)
+
+        every { window.findViewById<View>(android.R.id.content) } returns root
+        coldCallbacks.onActivityStarted(content)
+        coldManager.updateLockTimestamp()
+        coldCallbacks.onActivityResumed(content)
+
+        verify(exactly = 0) { frameworkContainer.visibility = View.INVISIBLE }
+        verifyOrder {
+            root.visibility = View.INVISIBLE
+            root.visibility = View.VISIBLE
+        }
+        verify { window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+    }
+
+    @Test
+    fun lockedCreationDoesNotResolveContentBeforeLayoutInstallation() {
+        val coldManager = PassCodeManager(preferences, mockk(relaxed = true))
+        val coldCallbacks = GlobalPassCodeProtectionCallbacks(mockk(relaxed = true), coldManager)
+        coldCallbacks.onActivityCreated(content, null)
+
+        verify(exactly = 0) { window.findViewById<View>(android.R.id.content) }
+        verify { window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+    }
+
+    @Test
     fun contentIsHiddenBeforePauseOnModernAndroid() {
         callbacks.onActivityPrePaused(content)
 
