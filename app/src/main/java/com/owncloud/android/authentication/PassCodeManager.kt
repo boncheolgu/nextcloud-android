@@ -51,10 +51,8 @@ class PassCodeManager(private val preferences: AppPreferences, private val clock
     private fun isExemptActivity(activity: Activity): Boolean = exemptOfPasscodeActivities.contains(activity.javaClass)
 
     fun onActivityCreated(activity: Activity) {
+        // AppCompat may still wrap this container and transfer android.R.id.content to a child.
         protectWindow(activity)
-        if (isLocked(activity)) {
-            getActivityRootView(activity)?.visibility = View.INVISIBLE
-        }
     }
 
     fun onActivityResumed(activity: Activity): Boolean {
