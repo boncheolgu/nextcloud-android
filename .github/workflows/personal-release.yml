@@ -83,6 +83,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
+          cmdline-tools-version: '16111833'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
 
@@ -91,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           source ndk.env
-          sdkmanager 'platforms;android-37' 'build-tools;36.0.0' \
+          sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' \
             "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
           {
             echo 'org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8 -XX:MaxMetaspaceSize=768m'
@@ -130,9 +131,9 @@ jobs:
             exit 1
           }
           mkdir -p dist
-          tools="$ANDROID_HOME/build-tools/36.0.0"
+          tools="$ANDROID_HOME/build-tools/37.0.0"
           apk="dist/Nextcloud-Personal-$RELEASE_TAG.apk"
-          "$tools/zipalign" -f -p 4 "${apks[0]}" "$RUNNER_TEMP/aligned.apk"
+          "$tools/zipalign" -P 16 -f 4 "${apks[0]}" "$RUNNER_TEMP/aligned.apk"
           "$tools/apksigner" sign --ks "$keystore" --ks-key-alias "$KEY_ALIAS" \
             --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD \
             --out "$apk" "$RUNNER_TEMP/aligned.apk"
