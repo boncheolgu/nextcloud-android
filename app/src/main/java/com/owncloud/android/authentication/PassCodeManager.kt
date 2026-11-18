@@ -151,9 +151,8 @@ class PassCodeManager(private val preferences: AppPreferences, private val clock
         pausedActivity = null
     }
 
-    private fun isProtectionEnabled(): Boolean =
-        preferences.lockPreference == SettingsActivity.LOCK_PASSCODE ||
-            preferences.lockPreference == SettingsActivity.LOCK_DEVICE_CREDENTIALS
+    private fun isProtectionEnabled(): Boolean = preferences.lockPreference == SettingsActivity.LOCK_PASSCODE ||
+        preferences.lockPreference == SettingsActivity.LOCK_DEVICE_CREDENTIALS
 
     private fun protectWindow(activity: Activity) {
         val secure = isProtectionEnabled() || isExemptActivity(activity)
