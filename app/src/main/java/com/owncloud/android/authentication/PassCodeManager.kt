@@ -21,6 +21,7 @@ import com.owncloud.android.ui.activity.PassCodeActivity
 import com.owncloud.android.ui.activity.RequestCredentialsActivity
 import com.owncloud.android.ui.activity.SettingsActivity
 import com.owncloud.android.utils.DeviceCredentialUtils
+import java.lang.ref.WeakReference
 
 class PassCodeManager(private val preferences: AppPreferences, private val clock: Clock) {
     companion object {
@@ -45,32 +46,33 @@ class PassCodeManager(private val preferences: AppPreferences, private val clock
 
     private var canAskPin = true
     private val startedActivities = mutableSetOf<Activity>()
+    private var pausedActivity: WeakReference<Activity>? = null
     private var askPinWhenDeviceLocked = false
 
     private fun isExemptActivity(activity: Activity): Boolean = exemptOfPasscodeActivities.contains(activity.javaClass)
 
     fun onActivityResumed(activity: Activity): Boolean {
-        var askedForPin = false
-
-        if (!isExemptActivity(activity)) {
-            val passcodeRequested = passCodeShouldBeRequested()
-            val credentialsRequested = deviceCredentialsShouldBeRequested(activity)
-            val shouldHideView = passcodeRequested || credentialsRequested
-            getActivityRootView(activity)?.visibility = if (shouldHideView) View.GONE else View.VISIBLE
-            askedForPin = shouldHideView
-
-            if (passcodeRequested) {
-                requestPasscode(activity)
-            } else if (credentialsRequested) {
-                requestCredentials(activity)
-            }
-            if (askedForPin) {
-                preferences.lockTimestamp = 0
-            }
+        val returningToPausedActivity = pausedActivity?.get() === activity
+        pausedActivity = null
+        if (isExemptActivity(activity)) {
+            return false
+        }
+        if (returningToPausedActivity) {
+            canAskPin = true
         }
 
-        if (!askedForPin && preferences.lockTimestamp != 0L) {
-            updateLockTimestamp()
+        val passcodeRequested = passCodeShouldBeRequested()
+        val credentialsRequested = deviceCredentialsShouldBeRequested(activity)
+        val askedForPin = passcodeRequested || credentialsRequested
+        getActivityRootView(activity)?.visibility = if (askedForPin) View.GONE else View.VISIBLE
+
+        if (passcodeRequested) {
+            requestPasscode(activity)
+        } else if (credentialsRequested) {
+            requestCredentials(activity)
+        }
+        if (askedForPin) {
+            preferences.lockTimestamp = 0
         }
 
         return askedForPin
@@ -107,6 +109,10 @@ class PassCodeManager(private val preferences: AppPreferences, private val clock
         startedActivities.add(activity)
     }
 
+    fun onActivityPaused(activity: Activity) {
+        pausedActivity = WeakReference(activity)
+    }
+
     fun onActivityStopped(activity: Activity) {
         startedActivities.remove(activity)
         if (startedActivities.isEmpty() && !activity.isChangingConfigurations) {
@@ -123,6 +129,7 @@ class PassCodeManager(private val preferences: AppPreferences, private val clock
         preferences.lockTimestamp = clock.millisSinceBoot
         canAskPin = false
         askPinWhenDeviceLocked = false
+        pausedActivity = null
     }
 
     private fun shouldBeLocked(): Boolean = canAskPin || askPinWhenDeviceLocked

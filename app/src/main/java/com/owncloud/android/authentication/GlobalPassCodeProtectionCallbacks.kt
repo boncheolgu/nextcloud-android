@@ -37,6 +37,7 @@ class GlobalPassCodeProtectionCallbacks(
 
     override fun onActivityPaused(activity: Activity) {
         activity.logLifecycle("onPause() ending")
+        passCodeManager.onActivityPaused(activity)
     }
 
     override fun onActivityStopped(activity: Activity) {
